@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { Tour, Restaurant, Party, Camping, Trail, Sport } from '../types';
 import { imageCache } from "./imageCache";
 
@@ -10,33 +10,91 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
+// --- CONCURRENCY MANAGER ---
+// Limits the number of simultaneous image generation requests to avoid hitting rate limits.
+const MAX_CONCURRENT_REQUESTS = 1; 
+const requestQueue: (() => Promise<void>)[] = [];
+let activeRequests = 0;
+
+const processQueue = () => {
+    if (activeRequests >= MAX_CONCURRENT_REQUESTS || requestQueue.length === 0) return;
+    
+    activeRequests++;
+    const nextTask = requestQueue.shift();
+    
+    if (nextTask) {
+        nextTask().finally(() => {
+            activeRequests--;
+            processQueue();
+        });
+    }
+};
+
+const scheduleRequest = <T>(task: () => Promise<T>): Promise<T> => {
+    return new Promise((resolve, reject) => {
+        requestQueue.push(async () => {
+            try {
+                const result = await task();
+                resolve(result);
+            } catch (error) {
+                reject(error);
+            }
+        });
+        processQueue();
+    });
+};
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const generateImage = async (prompt: string): Promise<string> => {
     if (imageCache.has(prompt)) {
         return imageCache.get(prompt)!;
     }
 
-    try {
-        const response = await ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
-            prompt: prompt,
-            config: {
-                numberOfImages: 1,
-                outputMimeType: 'image/jpeg',
-                aspectRatio: '4:3',
-            },
-        });
+    // Wrap the API call in the scheduler
+    return scheduleRequest(async () => {
+        let lastError: any;
+        
+        // Retry logic: Try up to 3 times with exponential backoff
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                const response = await ai.models.generateImages({
+                    model: 'imagen-4.0-generate-001',
+                    prompt: prompt,
+                    config: {
+                        numberOfImages: 1,
+                        outputMimeType: 'image/jpeg',
+                        aspectRatio: '4:3',
+                        // Safety settings to prevent over-blocking of valid travel content
+                        safetySettings: [
+                            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+                            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+                            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+                            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+                        ],
+                    },
+                });
 
-        if (response.generatedImages && response.generatedImages.length > 0) {
-            const base64Image = response.generatedImages[0].image.imageBytes;
-            imageCache.set(prompt, base64Image);
-            return base64Image;
-        } else {
-            throw new Error("Nenhuma imagem foi gerada.");
+                if (response.generatedImages && response.generatedImages.length > 0) {
+                    const base64Image = response.generatedImages[0].image.imageBytes;
+                    imageCache.set(prompt, base64Image);
+                    return base64Image;
+                } else {
+                    throw new Error("Nenhuma imagem foi gerada.");
+                }
+            } catch (error) {
+                console.warn(`Attempt ${attempt} failed for prompt: "${prompt.substring(0, 30)}..."`, error);
+                lastError = error;
+                if (attempt < 3) {
+                    // Wait 2s, then 4s before retrying
+                    await delay(2000 * attempt);
+                }
+            }
         }
-    } catch (error) {
-        console.error(`Error generating image for prompt "${prompt}":`, error);
-        throw new Error("Falha ao gerar imagem.");
-    }
+        
+        console.error(`All attempts failed for prompt "${prompt}":`, lastError);
+        throw new Error("Falha ao gerar imagem após múltiplas tentativas.");
+    });
 };
 
 const reviewSchema = {
