@@ -1,0 +1,5 @@
+{
+  "name": "Guia de Viagens",
+  "description": "Um guia interativo que usa a API Gemini para sugerir passeios, restaurantes, festas e atividades para suas viagens.",
+  "requestFramePermissions": []
+}
