@@ -11,7 +11,7 @@ const Header: React.FC<HeaderProps> = ({ onRegisterClick, onFavoritesClick, favo
     <header className="bg-gray-900/80 backdrop-blur-sm sticky top-0 z-40 border-b border-gray-700/50">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
              <div className="flex flex-col">
-                <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-400">
+                <h1 className="text-2xl font-extrabold tracking-tight text-yellow-500">
                     Guia de Viagens
                 </h1>
                 <p className="text-xs text-gray-400 hidden sm:block">
@@ -31,7 +31,7 @@ const Header: React.FC<HeaderProps> = ({ onRegisterClick, onFavoritesClick, favo
                 </button>
                 <button
                     onClick={onRegisterClick}
-                    className="bg-blue-600 text-white font-bold rounded-lg px-4 py-2 text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-300"
+                    className="bg-yellow-500 text-gray-900 font-bold rounded-lg px-4 py-2 text-sm hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-75 transition duration-300"
                 >
                     Cadastre-se
                 </button>

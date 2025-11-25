@@ -20,7 +20,7 @@ import FavoritesModal from './components/FavoritesModal';
 
 interface SectionProps {
   title: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 function Section({ title, children }: SectionProps) {

@@ -23,13 +23,13 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, isLoading }) => {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Digite o nome de uma cidade (ex: Roma)"
-            className="flex-grow bg-gray-800 border border-gray-600 text-white placeholder-gray-400 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:outline-none transition duration-300"
+            className="flex-grow bg-gray-800 border border-gray-600 text-white placeholder-gray-400 rounded-lg px-4 py-3 focus:ring-2 focus:ring-yellow-500 focus:outline-none transition duration-300"
             disabled={isLoading}
         />
         <button
             type="submit"
             disabled={isLoading}
-            className="bg-blue-600 text-white font-bold rounded-lg px-6 py-3 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition duration-300 flex items-center justify-center gap-2"
+            className="bg-yellow-500 text-gray-900 font-bold rounded-lg px-6 py-3 hover:bg-yellow-600 disabled:bg-gray-600 disabled:text-white disabled:cursor-not-allowed transition duration-300 flex items-center justify-center gap-2"
         >
             {isLoading ? (
             <>

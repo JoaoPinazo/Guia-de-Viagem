@@ -1,4 +1,5 @@
-import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
+
+import { GoogleGenAI, Type } from "@google/genai";
 import { Tour, Restaurant, Party, Camping, Trail, Sport } from '../types';
 import { imageCache } from "./imageCache";
 
@@ -65,13 +66,6 @@ export const generateImage = async (prompt: string): Promise<string> => {
                         numberOfImages: 1,
                         outputMimeType: 'image/jpeg',
                         aspectRatio: '4:3',
-                        // Safety settings to prevent over-blocking of valid travel content
-                        safetySettings: [
-                            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-                            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-                            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-                            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-                        ],
                     },
                 });
 
@@ -205,48 +199,6 @@ const restaurantSchema = {
     required: ["nome", "descricao", "tipo_cozinha", "faixa_preco", "endereco", "imagem_query", "cardapio", "avaliacoes"],
   }
 };
-
-const partySchema = {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        nome: {
-          type: Type.STRING,
-          description: "O nome da festa ou evento."
-        },
-        descricao: {
-          type: Type.STRING,
-          description: "Uma breve descrição da festa, o tipo de música ou atração principal."
-        },
-        data_evento: {
-          type: Type.STRING,
-          description: "O dia e data do evento. Ex: 'Sábado, 25 de Maio'."
-        },
-        endereco: {
-            type: Type.STRING,
-            description: "O endereço completo do local do evento. Ex: 'Av. Pacaembu, 1280 - Pacaembu, São Paulo - SP'."
-        },
-        preco_ingresso: {
-            type: Type.STRING,
-            description: "O preço do ingresso do evento. Ex: 'A partir de R$ 100,00', 'Entrada Franca'."
-        },
-        imagem_query: {
-          type: Type.STRING,
-          description: "Uma frase em inglês para buscar uma foto. Deve ser ultra-específica para obter uma imagem realista do ambiente do evento à noite. Inclua termos como 'event photography', 'vibrant lighting', 'crowd', e o nome do local. Ex: 'event photography vibrant lighting inside fabric club london'."
-        },
-        atracoes: {
-            type: Type.ARRAY,
-            description: "Uma lista com 2 a 3 atrações principais do evento (ex: DJs, bandas, tema).",
-            items: {
-              type: Type.STRING,
-            },
-          },
-        avaliacoes: reviewSchema,
-      },
-      required: ["nome", "descricao", "data_evento", "endereco", "imagem_query", "atracoes", "preco_ingresso", "avaliacoes"],
-    }
-  };
   
 const campingSchema = {
     type: Type.ARRAY,
@@ -373,19 +325,61 @@ export const fetchRestaurants = async (location: string): Promise<Restaurant[]> 
 
   export const fetchParties = async (location: string): Promise<Party[]> => {
     try {
-      const prompt = `Crie uma lista de 8 festas e eventos populares acontecendo na cidade de '${location}' durante esta semana. Inclua diferentes estilos. Para cada evento, forneça as informações solicitadas no schema, incluindo o endereço completo, as atrações, o preço do ingresso e 3 avaliações de usuários simuladas.`;
+      // Calcular datas dinâmicas (Hoje + 7 dias)
+      const today = new Date();
+      const nextWeek = new Date(today);
+      nextWeek.setDate(today.getDate() + 7);
+      
+      const dateOptions: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+      const dateRange = `${today.toLocaleDateString('pt-BR', dateOptions)} até ${nextWeek.toLocaleDateString('pt-BR', dateOptions)}`;
+
+      // Usar Google Search para encontrar eventos REAIS
+      // Nota: Quando usamos 'tools: [{googleSearch: {}}]', NÃO podemos usar 'responseMimeType: application/json'
+      // ou 'responseSchema' estrito. Precisamos instruir o modelo via texto a retornar JSON.
+      const prompt = `
+        Atue como um guia local atualizado. Pesquise no Google por festas, shows, festivais e eventos culturais CONFIRMADOS para acontecer em '${location}' especificamente no período de ${dateRange}.
+        
+        Sua tarefa é retornar uma lista de 8 eventos REAIS encontrados nessa pesquisa.
+        
+        IMPORTANTE: A resposta deve ser EXCLUSIVAMENTE um array JSON válido (sem markdown code blocks como \`\`\`json), seguindo estritamente esta estrutura para cada item:
+        [
+            {
+                "nome": "Nome oficial do evento",
+                "descricao": "Descrição do evento (estilo musical, tema)",
+                "data_evento": "Data e hora exata real (Ex: Sábado, 25 de Maio às 22h)",
+                "endereco": "Nome do local e endereço real",
+                "preco_ingresso": "Valor real ou estimado",
+                "imagem_query": "prompt em inglês para gerar uma imagem realista do evento (Ex: 'photorealistic night club crowd with lasers')",
+                "atracoes": ["Artista 1", "Destaque 2"],
+                "avaliacoes": [
+                    {"autor": "Visitante Local", "nota": 4.5, "comentario": "Sempre muito animado!"},
+                    {"autor": "Turista", "nota": 5, "comentario": "Ótima música e ambiente."}
+                ]
+            }
+        ]
+        
+        Não adicione texto antes ou depois do JSON.
+      `;
   
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: prompt,
         config: {
-          responseMimeType: "application/json",
-          responseSchema: partySchema,
+          tools: [{ googleSearch: {} }], // Habilita busca real no Google
+          // responseMimeType e responseSchema removidos propositalmente para permitir o uso de ferramentas
         },
       });
   
-      const jsonText = response.text.trim();
-      const parties: Party[] = JSON.parse(jsonText);
+      let jsonText = response.text.trim();
+      
+      // Limpeza manual do Markdown caso o modelo inclua
+      if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.replace(/^```json/, '').replace(/```$/, '');
+      } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```/, '').replace(/```$/, '');
+      }
+      
+      const parties: Party[] = JSON.parse(jsonText.trim());
       return parties;
   
     } catch (error) {
